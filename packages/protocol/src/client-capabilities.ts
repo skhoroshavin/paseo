@@ -33,6 +33,11 @@ export const CLIENT_CAPS = {
   // Remove the legacy snapshot encoding after 2027-02-04.
   compactProviderSnapshots: "compact_provider_snapshots",
   providerSnapshotReferences: "provider_snapshot_references",
+  // COMPAT(assistantMessageSnapshot): added in v0.9.2. The daemon emits the
+  // authoritative message_end snapshot only to clients that reconcile it against
+  // streamed deltas; older clients append it and duplicate the text. Remove the
+  // gate after 2027-03-25 once the supported client floor is >= v0.9.2.
+  assistantMessageSnapshot: "assistant_message_snapshot",
   // COMPAT(timelineReplacementInvalidation): added in v0.5.0, remove legacy
   // reconstructed timeline replay after 2027-02-21 once the client floor supports invalidation.
   timelineReplacementInvalidation: "timeline_replacement_invalidation",

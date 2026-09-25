@@ -182,6 +182,7 @@ async function connect(input: {
   selective: boolean;
   timelineReplacementInvalidation?: boolean;
   timelineNotifications?: boolean;
+  assistantMessageSnapshot?: boolean;
   pluginTimelineItems?: boolean;
   workspaceSetupBlocked?: boolean;
 }): Promise<ConnectedClient> {
@@ -201,6 +202,9 @@ async function connect(input: {
       ...(input.timelineNotifications === undefined
         ? {}
         : { [CLIENT_CAPS.timelineNotifications]: input.timelineNotifications }),
+      ...(input.assistantMessageSnapshot === undefined
+        ? {}
+        : { [CLIENT_CAPS.assistantMessageSnapshot]: input.assistantMessageSnapshot }),
       [CLIENT_CAPS.timelineReplacementInvalidation]: input.timelineReplacementInvalidation ?? false,
     },
     reconnect: { enabled: false },
@@ -374,6 +378,68 @@ test("plugin timeline items are sent only to clients that advertise support", as
     expect(legacyTimeline.endCursor).toEqual(capableTimeline.endCursor);
     expect(legacyTimeline.entries.flatMap((entry) => entry.collapsed)).not.toContain("identity");
   }
+});
+
+test("assistant end-of-message snapshots are sent only to clients that advertise support", async () => {
+  await daemon.close();
+  daemon = await createTestPaseoDaemon({
+    isDev: true,
+    agentClients: { mock: new MockLoadTestAgentClient() },
+  });
+  const capable = await connect({
+    clientId: "snapshot-capable",
+    selective: false,
+    assistantMessageSnapshot: true,
+  });
+  const legacy = await connect({
+    clientId: "snapshot-legacy",
+    selective: false,
+    assistantMessageSnapshot: false,
+  });
+  const agent = await capable.client.createAgent({
+    provider: "mock",
+    cwd: "/tmp",
+    title: "Snapshot compatibility",
+    model: "ten-second-stream",
+  });
+  capable.clear();
+  legacy.clear();
+
+  await daemon.daemon.agentManager.appendTimelineItem(agent.id, {
+    type: "assistant_message",
+    text: "Repaired text",
+    messageId: "msg-1",
+    snapshot: true,
+  });
+  await daemon.daemon.agentManager.appendTimelineItem(agent.id, {
+    type: "assistant_message",
+    text: "Visible to every client",
+  });
+  await Promise.all([
+    capable.next(isAgentStream(agent.id), "capable timeline delivery"),
+    legacy.next(isAgentStream(agent.id), "legacy timeline delivery"),
+  ]);
+  await Promise.all([capable.barrier("snapshot-capable"), legacy.barrier("snapshot-legacy")]);
+
+  const capableLiveItems = capable.messages.flatMap((message) =>
+    message.type === "agent_stream" && message.payload.event.type === "timeline"
+      ? [message.payload.event.item]
+      : [],
+  );
+  const legacyLiveItems = legacy.messages.flatMap((message) =>
+    message.type === "agent_stream" && message.payload.event.type === "timeline"
+      ? [message.payload.event.item]
+      : [],
+  );
+  expect(
+    capableLiveItems.some((item) => item.type === "assistant_message" && item.snapshot === true),
+  ).toBe(true);
+  expect(
+    legacyLiveItems.some((item) => item.type === "assistant_message" && item.snapshot === true),
+  ).toBe(false);
+  expect(legacyLiveItems).toContainEqual(
+    expect.objectContaining({ type: "assistant_message", text: "Visible to every client" }),
+  );
 });
 
 test("rewind routes replacement completion by source capability and subscription", async () => {

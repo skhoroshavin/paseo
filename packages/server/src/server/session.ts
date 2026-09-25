@@ -1257,12 +1257,17 @@ export class Session {
     return owner;
   }
 
-  // COMPAT(timelineItemCapabilities): plugin items added in v0.8.0, notifications in v0.7.2.
-  // Remove after 2027-03-07 once the supported client floor is >= v0.8.0.
-  private supportsTimelineItem(item: { type: string }, source?: object): boolean {
+  // COMPAT(timelineItemCapabilities): plugin items added in v0.8.0, notifications in v0.7.2,
+  // assistant snapshots in v0.9.2. Remove after 2027-03-25 once the supported client floor is >= v0.9.2.
+  private supportsTimelineItem(
+    item: { type: string; snapshot?: boolean },
+    source?: object,
+  ): boolean {
     let capability: ClientCapability;
     if (item.type === "notification") capability = CLIENT_CAPS.timelineNotifications;
     else if (item.type === "plugin") capability = CLIENT_CAPS.pluginTimelineItems;
+    else if (item.type === "assistant_message" && item.snapshot === true)
+      capability = CLIENT_CAPS.assistantMessageSnapshot;
     else return true;
     return source ? this.supportsForSource(capability, source) : this.supports(capability);
   }

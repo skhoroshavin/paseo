@@ -101,6 +101,30 @@ describe("projectTimelineRows", () => {
     expect(projected[0]?.collapsed).toContain("assistant_merge");
   });
 
+  test("drops the snapshot flag from a standalone assistant row in projected mode", () => {
+    const rows: AgentTimelineRow[] = [
+      {
+        seq: 1,
+        timestamp: "2026-02-13T00:00:00.000Z",
+        item: {
+          type: "assistant_message",
+          text: "Repaired text",
+          messageId: "msg-1",
+          snapshot: true,
+        },
+      },
+    ];
+
+    const projected = projectTimelineRows({ rows, mode: "projected" });
+
+    expect(projected).toHaveLength(1);
+    expect(projected[0]?.item).toEqual({
+      type: "assistant_message",
+      text: "Repaired text",
+      messageId: "msg-1",
+    });
+  });
+
   test("keeps adjacent assistant chunks with different message ids separate in projected mode", () => {
     const rows: AgentTimelineRow[] = [
       {
