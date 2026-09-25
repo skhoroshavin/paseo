@@ -1256,6 +1256,7 @@ export class PiRpcAgentSession implements AgentSession {
   private activeTurnId: string | null = null;
   private activeClientMessageId: string | null = null;
   private activeAssistantMessageId: string | null = null;
+  private activeAssistantText = "";
   private activeTurnStarted = false;
   private activeTurnStartedEmitted = false;
   private pendingSettledMessages: PiAgentMessage[] | null = null;
@@ -2368,6 +2369,7 @@ export class PiRpcAgentSession implements AgentSession {
     if (event.assistantMessageEvent.type === "text_delta") {
       // Pi-compatible runtimes may emit updates without a preceding message_start.
       this.activeAssistantMessageId ??= event.message?.responseId || randomUUID();
+      this.activeAssistantText += event.assistantMessageEvent.delta ?? "";
       this.emit({
         type: "timeline",
         provider: this.provider,
@@ -2396,6 +2398,7 @@ export class PiRpcAgentSession implements AgentSession {
   private handleMessageStart(event: Extract<PiAgentSessionEvent, { type: "message_start" }>): void {
     if (event.message.role === "assistant") {
       this.activeAssistantMessageId = event.message.responseId || null;
+      this.activeAssistantText = "";
     }
   }
 
@@ -2404,7 +2407,25 @@ export class PiRpcAgentSession implements AgentSession {
     turnId: string | undefined,
   ): void {
     if (event.message.role === "assistant") {
+      // message_end carries the final authoritative message; extensions may have
+      // rewritten its content after the deltas were already streamed.
+      const finalText = getUserMessageText(event.message.content);
+      if (finalText && finalText !== this.activeAssistantText) {
+        this.emit({
+          type: "timeline",
+          provider: this.provider,
+          turnId,
+          item: {
+            type: "assistant_message",
+            text: finalText,
+            messageId:
+              this.activeAssistantMessageId ?? event.message.responseId ?? randomUUID(),
+            snapshot: true,
+          },
+        });
+      }
       this.activeAssistantMessageId = null;
+      this.activeAssistantText = "";
       return;
     }
     if (event.message.role === "custom") {
@@ -2475,6 +2496,7 @@ export class PiRpcAgentSession implements AgentSession {
     this.activeTurnId = null;
     this.activeClientMessageId = null;
     this.activeAssistantMessageId = null;
+    this.activeAssistantText = "";
     this.activeTurnStarted = false;
     this.activeTurnStartedEmitted = false;
     this.pendingSettledMessages = null;

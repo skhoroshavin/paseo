@@ -271,6 +271,11 @@ export class AgentStreamCoalescer {
         previous.provider === entry.provider &&
         previous.turnId === entry.turnId
       ) {
+        if (entry.item.type === "assistant_message" && entry.item.snapshot === true) {
+          previous.text = entry.text;
+          previous.item = entry.item;
+          continue;
+        }
         previous.text += entry.text;
         continue;
       }

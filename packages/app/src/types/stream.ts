@@ -917,6 +917,7 @@ function appendAssistantMessage(
   messageId?: string,
   reservedItemIds?: ReadonlySet<string>,
   timelineCursor?: TimelinePosition,
+  snapshot?: boolean,
 ): StreamItem[] {
   const { chunk, hasContent } = normalizeChunk(text);
   if (!chunk) {
@@ -931,7 +932,7 @@ function appendAssistantMessage(
   if (shouldAppendToLast) {
     const updated: AssistantMessageItem = {
       ...last,
-      text: `${last.text}${chunk}`,
+      text: snapshot === true ? chunk : `${last.text}${chunk}`,
       timestamp,
       ...(timelineCursor ? { timelineCursor } : {}),
     };
@@ -949,7 +950,7 @@ function appendAssistantMessage(
   ) {
     const updated: AssistantMessageItem = {
       ...secondLast,
-      text: `${secondLast.text}${chunk}`,
+      text: snapshot === true ? chunk : `${secondLast.text}${chunk}`,
       timestamp,
       ...(timelineCursor ? { timelineCursor } : {}),
     };
@@ -1524,6 +1525,7 @@ function reduceTimelineEvent(
           item.messageId,
           reservedItemIds,
           timelineCursor,
+          item.snapshot,
         ),
       );
     case "reasoning":
@@ -1999,6 +2001,26 @@ export function applyStreamEvent(params: {
   }
 
   const incomingKind = getEventItemKind(event);
+
+  // Final assistant snapshots are authoritative for their message: commit any
+  // in-flight head, then replace the tail row carrying the same message id
+  // instead of appending to it.
+  if (
+    event.type === "timeline" &&
+    event.item.type === "assistant_message" &&
+    event.item.snapshot === true
+  ) {
+    flushHead();
+    const reduced = reduceStreamUpdate(nextTail, event, timestamp, {
+      source,
+      timelineCursor: params.timelineCursor,
+    });
+    if (reduced !== nextTail) {
+      nextTail = reduced;
+      changedTail = true;
+    }
+    return { tail: nextTail, head: nextHead, changedTail, changedHead };
+  }
 
   // Check if we need to flush head before processing this event
   if (
