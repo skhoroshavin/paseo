@@ -724,6 +724,86 @@ describe("PiRpcAgentSession", () => {
     ]);
   });
 
+  test("emits a final assistant snapshot when message_end text differs from streamed deltas", async () => {
+    const { pi, session, events } = await createSession();
+    const fakeSession = pi.latestSession();
+
+    await session.startTurn("hello");
+    fakeSession.emit({
+      type: "message_start",
+      message: { role: "assistant", content: [], responseId: "msg-1" },
+    });
+    fakeSession.emit({
+      type: "message_update",
+      message: { role: "assistant", content: [], responseId: "msg-1" },
+      assistantMessageEvent: { type: "text_delta", delta: "corrupted " },
+    });
+    fakeSession.emit({
+      type: "message_update",
+      message: { role: "assistant", content: [], responseId: "msg-1" },
+      assistantMessageEvent: { type: "text_delta", delta: "text" },
+    });
+    fakeSession.emit({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        responseId: "msg-1",
+        content: [{ type: "text", text: "Repaired text" }],
+      },
+    });
+    fakeSession.finishTurn();
+
+    await events.nextTurnCompletion();
+
+    expect(events.timelineItems()).toEqual([
+      { type: "assistant_message", text: "corrupted ", messageId: "msg-1" },
+      { type: "assistant_message", text: "text", messageId: "msg-1" },
+      {
+        type: "assistant_message",
+        text: "Repaired text",
+        messageId: "msg-1",
+        snapshot: true,
+      },
+    ]);
+  });
+
+  test("emits no assistant snapshot when message_end text matches streamed deltas", async () => {
+    const { pi, session, events } = await createSession();
+    const fakeSession = pi.latestSession();
+
+    await session.startTurn("hello");
+    fakeSession.emit({
+      type: "message_start",
+      message: { role: "assistant", content: [], responseId: "msg-1" },
+    });
+    fakeSession.emit({
+      type: "message_update",
+      message: { role: "assistant", content: [], responseId: "msg-1" },
+      assistantMessageEvent: { type: "text_delta", delta: "Hel" },
+    });
+    fakeSession.emit({
+      type: "message_update",
+      message: { role: "assistant", content: [], responseId: "msg-1" },
+      assistantMessageEvent: { type: "text_delta", delta: "lo" },
+    });
+    fakeSession.emit({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        responseId: "msg-1",
+        content: [{ type: "text", text: "Hello" }],
+      },
+    });
+    fakeSession.finishTurn();
+
+    await events.nextTurnCompletion();
+
+    expect(events.timelineItems()).toEqual([
+      { type: "assistant_message", text: "Hel", messageId: "msg-1" },
+      { type: "assistant_message", text: "lo", messageId: "msg-1" },
+    ]);
+  });
+
   test("streams Pi task calls as sub-agent cards with lifecycle status", async () => {
     const { pi, session, events } = await createSession();
     const fakeSession = pi.latestSession();

@@ -335,11 +335,17 @@ function assistantTimeline(
   text: string,
   provider: AgentProvider = "claude",
   messageId?: string,
+  snapshot?: boolean,
 ): AgentStreamEventPayload {
   return {
     type: "timeline",
     provider,
-    item: { type: "assistant_message", text, ...(messageId ? { messageId } : {}) },
+    item: {
+      type: "assistant_message",
+      text,
+      ...(messageId ? { messageId } : {}),
+      ...(snapshot !== undefined ? { snapshot } : {}),
+    },
   };
 }
 
@@ -881,6 +887,83 @@ describe("stream reducer canonical tool calls", () => {
     ]);
     expect(messages.map((message) => message.messageId)).toEqual([messageId, messageId]);
     expect(new Set(messages.map((message) => message.id)).size).toBe(2);
+  });
+
+  it("replaces streamed assistant text when a final snapshot arrives for the same message id", () => {
+    let tail: StreamItem[] = [];
+    let head: StreamItem[] = [];
+
+    for (const update of [
+      {
+        event: assistantTimeline("corrupted ", "pi", "msg-1"),
+        timestamp: new Date("2025-01-01T10:02:00Z"),
+      },
+      {
+        event: assistantTimeline("text", "pi", "msg-1"),
+        timestamp: new Date("2025-01-01T10:02:01Z"),
+      },
+      {
+        event: assistantTimeline("Repaired text", "pi", "msg-1", true),
+        timestamp: new Date("2025-01-01T10:02:02Z"),
+      },
+    ]) {
+      const result = applyStreamEvent({
+        tail,
+        head,
+        event: update.event,
+        timestamp: update.timestamp,
+      });
+      tail = result.tail;
+      head = result.head;
+    }
+
+    expect(head).toEqual([]);
+    const messages = tail.filter((item) => item.kind === "assistant_message");
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      kind: "assistant_message",
+      text: "Repaired text",
+      messageId: "msg-1",
+    });
+  });
+
+  it("replaces the streamed assistant row behind a user message when a final snapshot arrives", () => {
+    let tail: StreamItem[] = [];
+    let head: StreamItem[] = [];
+
+    const userMessage: AgentStreamEventPayload = {
+      type: "timeline",
+      provider: "pi",
+      item: { type: "user_message", text: "steer", messageId: "user-1" },
+    };
+    for (const update of [
+      {
+        event: assistantTimeline("corrupted text", "pi", "msg-1"),
+        timestamp: new Date("2025-01-01T10:02:00Z"),
+      },
+      { event: userMessage, timestamp: new Date("2025-01-01T10:02:01Z") },
+      {
+        event: assistantTimeline("Repaired text", "pi", "msg-1", true),
+        timestamp: new Date("2025-01-01T10:02:02Z"),
+      },
+    ]) {
+      const result = applyStreamEvent({
+        tail,
+        head,
+        event: update.event,
+        timestamp: update.timestamp,
+      });
+      tail = result.tail;
+      head = result.head;
+    }
+
+    expect(head).toEqual([]);
+    expect(tail.map((item) => item.kind)).toEqual(["assistant_message", "user_message"]);
+    expect(tail[0]).toMatchObject({
+      kind: "assistant_message",
+      text: "Repaired text",
+      messageId: "msg-1",
+    });
   });
 
   it("keeps whole messages when an assistant resumes after a tool", () => {
