@@ -2,6 +2,39 @@ import { describe, expect, it } from "vitest";
 import { InMemoryAgentTimelineStore } from "./agent-timeline-store.js";
 
 describe("InMemoryAgentTimelineStore", () => {
+  it("replaces merged assistant deltas when a final snapshot is appended", () => {
+    const store = new InMemoryAgentTimelineStore();
+    store.initialize("agent-1");
+    store.append(
+      "agent-1",
+      { type: "assistant_message", text: "corrupted ", messageId: "msg-1" },
+      { timestamp: "2026-01-01T00:00:00.000Z" },
+    );
+    store.append(
+      "agent-1",
+      { type: "assistant_message", text: "text", messageId: "msg-1" },
+      { timestamp: "2026-01-01T00:00:00.100Z" },
+    );
+    store.append(
+      "agent-1",
+      {
+        type: "assistant_message",
+        text: "Repaired text",
+        messageId: "msg-1",
+        snapshot: true,
+      },
+      { timestamp: "2026-01-01T00:00:00.200Z" },
+    );
+
+    const rows = store.getRows("agent-1");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.item).toEqual({
+      type: "assistant_message",
+      text: "Repaired text",
+      messageId: "msg-1",
+    });
+  });
+
   it("clamps an overshooting before cursor into the bounded tail window", () => {
     const store = new InMemoryAgentTimelineStore();
     store.initialize("agent-1", {

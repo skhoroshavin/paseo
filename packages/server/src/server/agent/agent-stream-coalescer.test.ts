@@ -64,6 +64,7 @@ function assistant(
     provider?: AgentProvider;
     turnId?: string;
     messageId?: string;
+    snapshot?: boolean;
   },
 ): Extract<AgentStreamEvent, { type: "timeline" }> {
   return timeline(
@@ -71,6 +72,7 @@ function assistant(
       type: "assistant_message",
       text,
       ...(options?.messageId !== undefined ? { messageId: options.messageId } : {}),
+      ...(options?.snapshot !== undefined ? { snapshot: options.snapshot } : {}),
     },
     options,
   );
@@ -151,6 +153,34 @@ describe("AgentStreamCoalescer", () => {
       {
         agentId: "agent-1",
         item: { type: "assistant_message", text: "hello" },
+        provider: "codex",
+      },
+    ]);
+  });
+
+  test("a final assistant snapshot replaces accumulated deltas in the window", async () => {
+    const { coalescer, flushes } = createHarness();
+    primeLeadingEdge(coalescer, flushes);
+
+    expect(coalescer.handle("agent-1", assistant("chunk-1", { messageId: "msg-1" }))).toBe(true);
+    expect(coalescer.handle("agent-1", assistant("chunk-2", { messageId: "msg-1" }))).toBe(true);
+    expect(
+      coalescer.handle(
+        "agent-1",
+        assistant("final repaired text", { messageId: "msg-1", snapshot: true }),
+      ),
+    ).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(60);
+    expect(flushes).toEqual([
+      {
+        agentId: "agent-1",
+        item: {
+          type: "assistant_message",
+          text: "final repaired text",
+          messageId: "msg-1",
+          snapshot: true,
+        },
         provider: "codex",
       },
     ]);

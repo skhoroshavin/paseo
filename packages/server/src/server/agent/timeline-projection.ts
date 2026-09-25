@@ -131,6 +131,23 @@ function makeCanonicalEntries(rows: readonly AgentTimelineRow[]): WorkingEntry[]
   });
 }
 
+// `snapshot` is a stream-only reconciliation hint. Merging consumes it, so it
+// never belongs on a projected entry a caller can read or persist.
+function withoutAssistantSnapshot(item: AgentTimelineItem): AgentTimelineItem {
+  if (item.type !== "assistant_message" || item.snapshot === undefined) {
+    return item;
+  }
+  return {
+    type: "assistant_message",
+    text: item.text,
+    ...(item.messageId ? { messageId: item.messageId } : {}),
+  };
+}
+
+function withoutAssistantSnapshots(entries: readonly WorkingEntry[]): WorkingEntry[] {
+  return entries.map((entry) => ({ ...entry, item: withoutAssistantSnapshot(entry.item) }));
+}
+
 function mergeIdentityMetadata(
   existing: WorkingEntry,
   entry: WorkingEntry,
@@ -278,7 +295,10 @@ function mergeAssistantChunks(entries: readonly WorkingEntry[]): WorkingEntry[] 
       ...previous,
       item: {
         type: "assistant_message",
-        text: `${previousAssistant.text}${entryAssistant.text}`,
+        text:
+          entryAssistant.snapshot === true
+            ? entryAssistant.text
+            : `${previousAssistant.text}${entryAssistant.text}`,
         ...(previousAssistant.messageId ? { messageId: previousAssistant.messageId } : {}),
       },
       timestamp: entry.timestamp,
@@ -323,7 +343,7 @@ export class TimelineProjection {
   }
 
   getRows(): ProjectedTimelineRow[] {
-    return this.rows.map((row) => ({ ...row }));
+    return this.rows.map((row) => ({ ...row, item: withoutAssistantSnapshot(row.item) }));
   }
 
   enrichSubmittedUserMessage(
@@ -350,7 +370,7 @@ export function projectTimelineRows(input: {
 
   const toolCollapsed = collapseByIdentity(canonical);
   const assistantMerged = mergeAssistantChunks(toolCollapsed);
-  return mergeReasoningChunks(assistantMerged);
+  return withoutAssistantSnapshots(mergeReasoningChunks(assistantMerged));
 }
 
 /**
@@ -366,7 +386,9 @@ export function selectTimelineWindowByProjectedLimit(input: {
   const { rows, direction } = input;
   const limit = Math.max(0, Math.floor(input.limit));
   const canonical = makeCanonicalEntries(rows);
-  const projectedAll = mergeReasoningChunks(mergeAssistantChunks(collapseByIdentity(canonical)));
+  const projectedAll = withoutAssistantSnapshots(
+    mergeReasoningChunks(mergeAssistantChunks(collapseByIdentity(canonical))),
+  );
 
   if (projectedAll.length === 0) {
     return {

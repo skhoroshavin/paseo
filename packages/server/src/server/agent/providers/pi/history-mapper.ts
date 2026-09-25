@@ -38,7 +38,7 @@ function isTextContentBlock(block: unknown): block is PiTextContent {
   );
 }
 
-export function getUserMessageText(content: string | (PiTextContent | PiImageContent)[]): string {
+export function getUserMessageText(content: string | readonly unknown[]): string {
   if (typeof content === "string") {
     return content;
   }
