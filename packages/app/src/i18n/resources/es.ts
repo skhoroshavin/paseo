@@ -2223,6 +2223,7 @@ export const es: TranslationResources = {
         options: {
           system: "Sistema",
           ar: "العربية",
+          de: "Deutsch",
           en: "English",
           es: "Español",
           fr: "Français",
