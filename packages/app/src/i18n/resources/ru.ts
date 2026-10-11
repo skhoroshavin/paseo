@@ -2207,6 +2207,7 @@ export const ru: TranslationResources = {
         options: {
           system: "Как в системе",
           ar: "العربية",
+          de: "Deutsch",
           en: "English",
           es: "Español",
           fr: "Français",

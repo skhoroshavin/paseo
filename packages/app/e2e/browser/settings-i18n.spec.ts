@@ -39,3 +39,21 @@ test("Settings language selector switches to Korean", async ({ page }) => {
 
   await expect(page.getByText("Default send", { exact: true }).first()).toBeVisible();
 });
+
+test("Settings language selector switches to German", async ({ page }) => {
+  test.setTimeout(120_000);
+
+  await gotoAppShell(page);
+  await openSettings(page);
+  await openSettingsSection(page, "general");
+
+  await page.getByRole("button", { name: "System", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Deutsch - German", exact: true }).click();
+
+  await expect(page.getByText("Standard-Senden", { exact: true }).first()).toBeVisible();
+
+  await page.getByRole("button", { name: "Deutsch", exact: true }).click();
+  await page.getByRole("menuitem", { name: "English - Englisch", exact: true }).click();
+
+  await expect(page.getByText("Default send", { exact: true }).first()).toBeVisible();
+});
